@@ -2,11 +2,10 @@ import fs from "fs";
 import crypto from "crypto";
 import path from "path";
 
-export function generateKeys(chavesDir) {
-  const publicKeyPath = path.join(chavesDir, "public_key.pem");
-  const privateKeyPath = path.join(chavesDir, "private_key.pem");
-
-  if (!fs.existsSync(chavesDir)) fs.mkdirSync(chavesDir, { recursive: true });
+// 🗝️ Gera par de chaves RSA (para cada teste)
+export function generateKeys(pastaChaves) {
+  const publicKeyPath = path.join(pastaChaves, "public.pem");
+  const privateKeyPath = path.join(pastaChaves, "private.pem");
 
   if (!fs.existsSync(publicKeyPath) || !fs.existsSync(privateKeyPath)) {
     const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
@@ -17,23 +16,33 @@ export function generateKeys(chavesDir) {
 
     fs.writeFileSync(publicKeyPath, publicKey);
     fs.writeFileSync(privateKeyPath, privateKey);
-
-    console.log("✅ Par de chaves RSA criado!");
+    console.log("🔑 Chaves RSA geradas.");
+  } else {
+    console.log("✅ Chaves RSA carregadas.");
   }
 }
 
-export function encryptAssim(inputFile, outputFile, chavesDir) {
-  const publicKey = fs.readFileSync(path.join(chavesDir, "public_key.pem"), "utf8");
+// 🔒 Criptografa arquivo pequeno (.asi)
+export function encryptAssim(inputFile, outputFile, pastaChaves) {
+  const publicKey = fs.readFileSync(path.join(pastaChaves, "public.pem"), "utf8");
   const data = fs.readFileSync(inputFile);
-  const encrypted = crypto.publicEncrypt(publicKey, data);
-  fs.writeFileSync(outputFile, encrypted);
+
+  // RSA só funciona com arquivos pequenos
+  if (data.length > 200) {
+    throw new Error("Arquivo muito grande para RSA. Use apenas arquivos pequenos ou texto.");
+  }
+
+  const encryptedData = crypto.publicEncrypt(publicKey, data);
+  fs.writeFileSync(outputFile, encryptedData);
   console.log("🔒 Arquivo criptografado (assimétrica):", outputFile);
 }
 
-export function decryptAssim(inputFile, outputFile, chavesDir) {
-  const privateKey = fs.readFileSync(path.join(chavesDir, "private_key.pem"), "utf8");
-  const encrypted = fs.readFileSync(inputFile);
-  const decrypted = crypto.privateDecrypt(privateKey, encrypted);
-  fs.writeFileSync(outputFile, decrypted);
+// 🔓 Descriptografa arquivo (.asi → original)
+export function decryptAssim(inputFile, outputFile, pastaChaves) {
+  const privateKey = fs.readFileSync(path.join(pastaChaves, "private.pem"), "utf8");
+  const encryptedData = fs.readFileSync(inputFile);
+
+  const decryptedData = crypto.privateDecrypt(privateKey, encryptedData);
+  fs.writeFileSync(outputFile, decryptedData);
   console.log("🔓 Arquivo descriptografado (assimétrica):", outputFile);
 }

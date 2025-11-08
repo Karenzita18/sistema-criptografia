@@ -4,54 +4,110 @@ import { encryptSim, decryptSim, ensureChavesSimetricas } from "./simetrica.js";
 import { generateKeys, encryptAssim, decryptAssim } from "./assimetrica.js";
 import { createHash } from "./hash.js";
 
-// nome do teste (ex: node index.js teste01)
-const nomeTeste = process.argv[2];
-
-if (!nomeTeste) {
-  console.error("❌ Informe o nome da pasta. Exemplo:");
-  console.error("   node index.js teste01");
+const arquivoEntrada = process.argv[2];
+if (!arquivoEntrada) {
+  console.error("❌ Informe o arquivo: node index.js <caminho>");
   process.exit(1);
 }
 
-// caminhos principais
-const baseDir = `./arquivos/${nomeTeste}`;
-const entradaDir = path.join(baseDir, "entrada");
-const entradaInternaDir = path.join(baseDir, `${nomeTeste}-entrada`);
-const saidaDir = path.join(baseDir, `${nomeTeste}-saida`);
-const chavesDir = path.join(baseDir, "chaves"); // 👈 nova pasta de chaves
+let arquivoCaminho = arquivoEntrada;
 
-// arquivo original
-const arquivoEntrada = path.join(entradaDir, "arquivo.txt");
+// Detecta se o arquivo existe no caminho informado
+if (!fs.existsSync(arquivoCaminho)) {
+  const tentativa = path.join("arquivos", arquivoEntrada);
+  if (fs.existsSync(tentativa)) {
+    arquivoCaminho = tentativa;
+  } else {
+    console.error("❌ Arquivo não encontrado:", arquivoEntrada);
+    process.exit(1);
+  }
+}
 
-// garantir que as pastas existam
-[entradaDir, entradaInternaDir, saidaDir, chavesDir].forEach((dir) => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-});
+console.log("📄 Arquivo detectado:", arquivoCaminho);
 
-// criar subpastas
-["assimetrica", "simetrica", "hash"].forEach((tipo) => {
-  fs.mkdirSync(path.join(entradaInternaDir, tipo), { recursive: true });
-  fs.mkdirSync(path.join(saidaDir, tipo), { recursive: true });
-});
+// Descobre se o arquivo já está dentro de algum teste
+let testeExistente = null;
+let partes = path.normalize(arquivoCaminho).split(path.sep);
 
-// caminhos de saída
-const simEntrada = path.join(entradaInternaDir, "simetrica", "arquivo.sim");
-const simSaida = path.join(saidaDir, "simetrica", "arquivo.txt");
-const assimEntrada = path.join(entradaInternaDir, "assimetrica", "arquivo.asi");
-const assimSaida = path.join(saidaDir, "assimetrica", "arquivo.txt");
-const hashSaida = path.join(saidaDir, "hash", "arquivo.has");
+for (const parte of partes) {
+  if (parte.startsWith("teste")) {
+    testeExistente = parte;
+    break;
+  }
+}
 
-// ---- EXECUÇÃO ----
+let testName;
+if (testeExistente) {
+  testName = testeExistente; // usa o teste existente
+  console.log(`📂 Usando teste existente: ${testName}`);
+} else {
+  // cria um novo teste
+  const baseDir = "arquivos";
+  if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir);
+  const testes = fs.readdirSync(baseDir).filter(f => f.startsWith("teste"));
+  const nextTestNum = String(testes.length + 1).padStart(2, "0");
+  testName = `teste${nextTestNum}`;
+  console.log(`🚀 Criando novo teste: ${testName}`);
+}
 
-// SIMÉTRICA
-ensureChavesSimetricas(chavesDir);
-encryptSim(arquivoEntrada, simEntrada, chavesDir);
-decryptSim(simEntrada, simSaida, chavesDir);
+const testDir = path.join("arquivos", testName);
+const pastaChaves = path.join(testDir, "chaves");
 
-// ASSIMÉTRICA
-generateKeys(chavesDir);
-encryptAssim(arquivoEntrada, assimEntrada, chavesDir);
-decryptAssim(assimEntrada, assimSaida, chavesDir);
+// Cria pastas necessárias (entrada/saída)
+const estrutura = [
+  `${testDir}/${testName}-entrada/simetrica`,
+  `${testDir}/${testName}-entrada/assimetrica`,
+  `${testDir}/${testName}-entrada/hash`,
+  `${testDir}/${testName}-saida/simetrica`,
+  `${testDir}/${testName}-saida/assimetrica`,
+  `${testDir}/${testName}-saida/hash`,
+  `${testDir}/chaves`
+];
 
-// HASH
-createHash(arquivoEntrada, hashSaida);
+estrutura.forEach(dir => fs.mkdirSync(dir, { recursive: true }));
+
+// Define os caminhos de saída
+const originalFileName = path.basename(arquivoCaminho);
+const simEnc = path.join(testDir, `${testName}-entrada/simetrica/${path.parse(originalFileName).name}.sim`);
+const simDec = path.join(testDir, `${testName}-saida/simetrica/${originalFileName}`);
+
+const asiEnc = path.join(testDir, `${testName}-entrada/assimetrica/${path.parse(originalFileName).name}.asi`);
+const asiDec = path.join(testDir, `${testName}-saida/assimetrica/${originalFileName}`);
+
+const hashOut = path.join(testDir, `${testName}-saida/hash/${path.parse(originalFileName).name}.has`);
+
+// 🔐 Simétrica
+try {
+  ensureChavesSimetricas(pastaChaves);
+  encryptSim(arquivoCaminho, simEnc, pastaChaves);
+  decryptSim(simEnc, simDec, pastaChaves);
+  console.log("✅ Criptografia simétrica concluída!");
+} catch (error) {
+  console.error("❌ Erro na simétrica:", error.message);
+}
+
+// 🔑 Assimétrica
+try {
+  const stats = fs.statSync(arquivoCaminho);
+  if (stats.size > 200) {
+    console.log("⚠️ Arquivo muito grande para RSA. Pulando criptografia assimétrica...");
+  } else {
+    generateKeys(pastaChaves);
+    encryptAssim(arquivoCaminho, asiEnc, pastaChaves);
+    decryptAssim(asiEnc, asiDec, pastaChaves);
+  }
+} catch (error) {
+  console.error("⚠️ Erro na criptografia assimétrica:", error.message);
+  console.log("➡️ Continuando para geração de hash...");
+}
+
+// 🧮 Hash
+try {
+  createHash(arquivoCaminho, hashOut);
+  console.log(`✅ Hash gerado com sucesso: ${hashOut}`);
+} catch (error) {
+  console.error("❌ Erro ao gerar hash:", error.message);
+}
+
+console.log(`\n✅ ${testName} concluído com sucesso!`);
+console.log(`📂 Estrutura criada em: ${testDir}`);
