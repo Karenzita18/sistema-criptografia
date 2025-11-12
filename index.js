@@ -1,12 +1,13 @@
 import fs from "fs";
 import path from "path";
 import { encryptSim, decryptSim, ensureChavesSimetricas } from "./simetrica.js";
-import { generateKeys, encryptAssim, decryptAssim } from "./assimetrica.js";
+import { generateKeys, encryptAssimHibrido, decryptAssimHibrido } from "./assimetrica.js";
 import { createHash } from "./hash.js";
 
 // ====== Parâmetros ======
 const modo = process.argv[2]; // simetrica, assimetrica, hash ou all
 const arquivoEntrada = process.argv[3]; // caminho do arquivo
+
 if (!modo || !arquivoEntrada) {
   console.error("❌ Use: node index.js <modo> <caminho_do_arquivo>");
   process.exit(1);
@@ -71,24 +72,20 @@ function runSimetrica() {
     ensureChavesSimetricas(pastaChaves);
     encryptSim(arquivoCaminho, simEnc, pastaChaves);
     decryptSim(simEnc, simDec, pastaChaves);
-    console.log("✅ Simétrica concluída!");
+    console.log("✅ Criptografia simétrica concluída!");
   } catch (e) {
-    console.error("❌ Erro simétrica:", e.message);
+    console.error("❌ Erro na criptografia simétrica:", e.message);
   }
 }
 
 function runAssimetrica() {
   try {
-    const stats = fs.statSync(arquivoCaminho);
-    if (stats.size > 200) console.log("⚠️ Arquivo muito grande para RSA, pulando assimétrica");
-    else {
-      generateKeys(pastaChaves);
-      encryptAssim(arquivoCaminho, asiEnc, pastaChaves);
-      decryptAssim(asiEnc, asiDec, pastaChaves);
-      console.log("✅ Assimétrica concluída!");
-    }
+    generateKeys(pastaChaves);
+    encryptAssimHibrido(arquivoCaminho, asiEnc, pastaChaves);
+    decryptAssimHibrido(asiEnc, asiDec, pastaChaves);
+    console.log("✅ Criptografia assimétrica (híbrida) concluída!");
   } catch (e) {
-    console.error("❌ Erro assimétrica:", e.message);
+    console.error("❌ Erro na criptografia assimétrica:", e.message);
   }
 }
 
@@ -97,7 +94,7 @@ function runHash() {
     createHash(arquivoCaminho, hashOut);
     console.log("✅ Hash gerado:", hashOut);
   } catch (e) {
-    console.error("❌ Erro hash:", e.message);
+    console.error("❌ Erro ao gerar hash:", e.message);
   }
 }
 
@@ -109,6 +106,8 @@ else if (modo === "all") {
   runSimetrica();
   runAssimetrica();
   runHash();
+} else {
+  console.error("❌ Modo inválido! Use: simetrica | assimetrica | hash | all");
 }
 
 console.log(`\n✅ ${testName} concluído com sucesso!`);
